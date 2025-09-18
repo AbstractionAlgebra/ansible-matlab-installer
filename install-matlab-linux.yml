@@ -70,9 +70,16 @@
     matlab_temp_dir: "/tmp/matlab_install"
     matlab_docs_path: "/usr/local/MATLAB/help"
 
-    # License configuration
-    matlab_license_server: "{{ matlab_license_server }}"
-    matlab_license_port: "{{ matlab_license_port }}"
+    # Common Options
+    matlab_version: "R2025a"
+    matlab_install_documentation: true
+
+    # License Configuration
+    matlab_license_type: "network"
+    matlab_license_server: "license.example.local"
+    matlab_license_port: "27000"
+    matlab_license_file: ""
+    matlab_file_installation_key: "YOUR_INSTALLATION_KEY"
 
   pre_tasks:
     - name: Create audit log entry for MATLAB installation start

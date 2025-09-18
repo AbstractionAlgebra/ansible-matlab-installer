@@ -291,7 +291,7 @@ matlab_supported_versions:
 
 # Installation Requirements
 matlab_minimum_requirements:
-  disk_space_gb: 25
+  disk_space_gb: 30
   memory_mb: 4096
 
 # Network Configuration
