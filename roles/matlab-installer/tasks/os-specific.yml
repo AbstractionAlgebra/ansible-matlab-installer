@@ -1,0 +1,78 @@
+---
+#################################################################################################################
+# MATLAB Installer Role - OS-Specific Tasks
+#
+# Purpose: OS-specific configuration for MATLAB installation (Ubuntu 22.04 and RHEL8)
+# Environment: Secure airgapped environments with STIG compliance
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+- name: Create audit log entry for OS-specific tasks
+  shell: |
+    logger -t ansible-matlab-os "Starting {{ ansible_distribution }} specific configuration for MATLAB on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+# Ubuntu-specific tasks
+- name: Configure Ubuntu environment
+  block:
+    - name: Install required packages for Ubuntu
+      package:
+        name: "{{ matlab_ubuntu_packages }}"
+        state: present
+      when: matlab_ubuntu_packages is defined
+
+    - name: Configure firewall for Ubuntu
+      ufw:
+        rule: allow
+        port: "{{ matlab_license_port }}"
+        proto: tcp
+        comment: "MATLAB License Server"
+      when: firewall_enabled | default(true)
+
+    - name: Configure AppArmor for MATLAB
+      shell: |
+        if [ -f /etc/apparmor.d/usr.local.MATLAB.bin.matlab ]; then
+          aa-complain /usr/local/MATLAB/bin/matlab
+        fi
+      when: apparmor_enforcing | default(true)
+
+  when: ansible_distribution == "Ubuntu"
+  tags: [ubuntu, packages, firewall]
+
+# RHEL-specific tasks
+- name: Configure RHEL environment
+  block:
+    - name: Install required packages for RHEL
+      package:
+        name: "{{ matlab_rhel_packages }}"
+        state: present
+      when: matlab_rhel_packages is defined
+
+    - name: Configure firewall for RHEL
+      firewalld:
+        port: "{{ matlab_license_port }}/tcp"
+        permanent: true
+        state: enabled
+        immediate: true
+      when: firewall_enabled | default(true)
+
+    - name: Configure SELinux for MATLAB
+      sefcontext:
+        target: "{{ matlab_install_root }}/bin/matlab"
+        setype: bin_t
+        state: present
+      when: selinux_enforcing | default(true)
+
+  when: ansible_os_family == "RedHat"
+  tags: [rhel, packages, firewall]
+
+- name: Create audit log entry for OS-specific completion
+  shell: |
+    logger -t ansible-matlab-os "Completed {{ ansible_distribution }} specific configuration for MATLAB on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]

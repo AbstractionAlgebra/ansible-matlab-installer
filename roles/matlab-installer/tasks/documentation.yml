@@ -1,0 +1,111 @@
+---
+#################################################################################################################
+# MATLAB Installer Role - Documentation Installation Tasks
+#
+# Purpose: Install MATLAB documentation and help files for offline use
+# Environment: Secure airgapped environments with STIG compliance
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+- name: Create audit log entry for documentation installation start
+  shell: |
+    logger -t ansible-matlab-docs "Starting MATLAB {{ matlab_version }} documentation installation on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+- name: Validate documentation source files
+  block:
+    - name: Check documentation archive exists
+      stat:
+        path: "{{ matlab_docs_source }}/{{ matlab_docs_filename }}"
+        checksum_algorithm: sha256
+      register: docs_archive_stat
+
+    - name: Fail if documentation archive not found
+      fail:
+        msg: "Documentation archive not found: {{ matlab_docs_source }}/{{ matlab_docs_filename }}"
+      when: not docs_archive_stat.stat.exists
+
+    - name: Validate documentation checksum
+      fail:
+        msg: "MATLAB documentation checksum validation failed!"
+      when:
+        - matlab_enforce_checksums | bool
+        - matlab_docs_checksums[matlab_version].sha256 != "PLACEHOLDER_CHECKSUM_UPDATE_FOR_ACTUAL_DOCS"
+        - docs_archive_stat.stat.checksum != matlab_docs_checksums[matlab_version].sha256
+
+  tags: [validation, documentation]
+
+- name: Install documentation
+  block:
+    - name: Create documentation installation directory
+      file:
+        path: "{{ matlab_docs_path }}"
+        state: directory
+        mode: "{{ matlab_dir_mode }}"
+        owner: root
+        group: root
+
+    - name: Extract documentation archive
+      unarchive:
+        src: "{{ matlab_docs_source }}/{{ matlab_docs_filename }}"
+        dest: "{{ matlab_docs_path }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "{{ matlab_dir_mode }}"
+
+    - name: Set documentation permissions
+      file:
+        path: "{{ matlab_docs_path }}"
+        mode: "{{ matlab_dir_mode }}"
+        owner: root
+        group: root
+        recurse: true
+
+  tags: [installation, documentation]
+
+- name: Configure MATLAB for local documentation
+  block:
+    - name: Create MATLAB configuration directory
+      file:
+        path: "{{ matlab_install_root }}/toolbox/local"
+        state: directory
+        mode: "{{ matlab_dir_mode }}"
+        owner: root
+        group: root
+
+    - name: Configure MATLAB to use local help
+      template:
+        src: matlab_local_config.m.j2
+        dest: "{{ matlab_install_root }}/toolbox/local/startup.m"
+        mode: "{{ matlab_file_mode }}"
+        owner: root
+        group: root
+      when: matlab_docs_configure_local | default(true)
+
+  tags: [configuration, documentation]
+
+- name: Verify documentation installation
+  block:
+    - name: Check documentation installation
+      stat:
+        path: "{{ matlab_docs_path }}/help"
+      register: docs_install_check
+
+    - name: Fail if documentation installation verification failed
+      fail:
+        msg: "Documentation installation verification failed"
+      when: not docs_install_check.stat.exists
+
+  tags: [verification, documentation]
+
+- name: Create audit log entry for documentation installation completion
+  shell: |
+    logger -t ansible-matlab-docs "MATLAB {{ matlab_version }} documentation installation completed on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]

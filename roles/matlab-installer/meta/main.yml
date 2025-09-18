@@ -1,0 +1,43 @@
+---
+#################################################################################################################
+# MATLAB Installer Role Metadata
+#
+# Purpose: Metadata for MATLAB installation role for secure airgapped environments
+# Environment: STIG compliant, FIPS mode enabled
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+galaxy_info:
+  role_name: matlab-installer
+  namespace: enterprise
+  author: Enterprise Security Team
+  description: |
+    Install MATLAB on Ubuntu 22.04 and RHEL8 workstations in secure,
+    airgapped environments with STIG compliance. Designed for
+    secure networks without internet access.
+
+  company: Enterprise Organization
+  license: Proprietary
+
+  min_ansible_version: "2.12"
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - "22.04"
+    - name: EL
+      versions:
+        - "8"
+
+  galaxy_tags:
+    - matlab
+
+dependencies: []
+
+collections:
+  - community.general
+  - ansible.posix

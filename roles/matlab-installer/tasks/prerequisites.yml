@@ -1,0 +1,293 @@
+---
+#################################################################################################################
+# MATLAB Installer Role - Prerequisites Tasks
+#
+# Purpose: Install system prerequisites and dependencies for MATLAB installation
+# Environment: Secure airgapped environments with STIG compliance
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Security Notes:
+# - Uses local/offline package repositories only
+# - Validates package integrity where possible
+# - Follows STIG compliance for package installation
+# - Proper audit logging for package changes
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+- name: Create audit log entry for prerequisites installation
+  shell: |
+    logger -t ansible-matlab-prereq "Starting prerequisites installation for MATLAB on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+- name: Validate package manager availability
+  block:
+    - name: Check package manager is available (Ubuntu)
+      command: dpkg --version
+      register: dpkg_check
+      failed_when: false
+      changed_when: false
+      when: ansible_os_family == "Debian"
+
+    - name: Check package manager is available (RHEL)
+      command: rpm --version
+      register: rpm_check
+      failed_when: false
+      changed_when: false
+      when: ansible_os_family == "RedHat"
+
+    - name: Fail if package manager unavailable
+      fail:
+        msg: "Package manager not available on {{ ansible_distribution }}"
+      when:
+        - (ansible_os_family == "Debian" and dpkg_check.rc != 0) or
+          (ansible_os_family == "RedHat" and rpm_check.rc != 0)
+
+  tags: [validation, prerequisites]
+
+- name: Install base development tools and libraries
+  block:
+    - name: Update package cache (Ubuntu)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+      retries: "{{ matlab_max_retries }}"
+      delay: "{{ matlab_retry_delay }}"
+      register: apt_update_result
+      until: apt_update_result is succeeded
+
+    - name: Install base packages (Ubuntu)
+      apt:
+        name:
+          - build-essential
+          - wget
+          - curl
+          - unzip
+          - tar
+          - gzip
+          - xvfb
+          - xorg
+          - openbox
+        state: present
+        install_recommends: false
+      when: ansible_os_family == "Debian"
+      retries: "{{ matlab_max_retries }}"
+      delay: "{{ matlab_retry_delay }}"
+
+    - name: Install base packages (RHEL)
+      yum:
+        name:
+          - "@Development Tools"
+          - wget
+          - curl
+          - unzip
+          - tar
+          - gzip
+          - xorg-x11-server-Xvfb
+          - xorg-x11-xinit
+          - openbox
+        state: present
+      when: ansible_os_family == "RedHat"
+      retries: "{{ matlab_max_retries }}"
+      delay: "{{ matlab_retry_delay }}"
+
+  tags: [packages, base-tools]
+
+- name: Install MATLAB-specific dependencies
+  block:
+    - name: Install MATLAB dependencies (Ubuntu)
+      apt:
+        name: "{{ matlab_ubuntu_packages }}"
+        state: present
+        install_recommends: false
+      when: ansible_os_family == "Debian"
+      retries: "{{ matlab_max_retries }}"
+      delay: "{{ matlab_retry_delay }}"
+
+    - name: Install MATLAB dependencies (RHEL)
+      yum:
+        name: "{{ matlab_rhel_packages }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+      retries: "{{ matlab_max_retries }}"
+      delay: "{{ matlab_retry_delay }}"
+
+  tags: [packages, matlab-deps]
+
+- name: Configure X11 forwarding and display
+  block:
+    - name: Ensure X11 directory exists
+      file:
+        path: /tmp/.X11-unix
+        state: directory
+        mode: "1777"
+        owner: root
+        group: root
+
+    - name: Create Xvfb service for headless display
+      template:
+        src: xvfb.service.j2
+        dest: /etc/systemd/system/xvfb.service
+        mode: "{{ matlab_file_mode }}"
+        owner: root
+        group: root
+      notify: reload systemd
+
+    - name: Start and enable Xvfb service
+      systemd:
+        name: xvfb
+        state: started
+        enabled: true
+        daemon_reload: true
+
+  tags: [x11, display, services]
+
+- name: Configure system limits for MATLAB
+  block:
+    - name: Set memory limits in limits.conf
+      pam_limits:
+        domain: "*"
+        limit_type: "{{ item.type }}"
+        limit_item: "{{ item.item }}"
+        value: "{{ item.value }}"
+      loop:
+        - { type: "soft", item: "memlock", value: "unlimited" }
+        - { type: "hard", item: "memlock", value: "unlimited" }
+        - { type: "soft", item: "stack", value: "unlimited" }
+        - { type: "hard", item: "stack", value: "unlimited" }
+        - { type: "soft", item: "nofile", value: "65536" }
+        - { type: "hard", item: "nofile", value: "65536" }
+
+    - name: Configure shared memory limits
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: true
+      loop:
+        - { name: "kernel.shmmni", value: "4096" }
+        - { name: "kernel.shmmax", value: "68719476736" }  # 64GB
+        - { name: "kernel.shmall", value: "4294967296" }
+
+  tags: [system-limits, performance]
+
+- name: Create MATLAB system users and groups
+  block:
+    - name: Create matlab group
+      group:
+        name: matlab
+        state: present
+        gid: 2000
+
+    - name: Create matlab service user
+      user:
+        name: matlab-service
+        group: matlab
+        system: true
+        shell: /bin/false
+        home: /var/lib/matlab
+        create_home: true
+        uid: 2000
+
+    - name: Set secure permissions on matlab home
+      file:
+        path: /var/lib/matlab
+        state: directory
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: matlab-service
+        group: matlab
+
+  tags: [users, security]
+
+- name: Configure SELinux/AppArmor for MATLAB
+  block:
+    - name: Check if SELinux is enabled
+      command: getenforce
+      register: selinux_status
+      failed_when: false
+      changed_when: false
+      when: ansible_os_family == "RedHat"
+
+    - name: Configure SELinux contexts for MATLAB (RHEL)
+      sefcontext:
+        target: "{{ matlab_install_root }}(/.*)?"
+        setype: bin_t
+        state: present
+      when:
+        - ansible_os_family == "RedHat"
+        - selinux_status.stdout | default('') == "Enforcing"
+      notify: restore selinux contexts
+
+    - name: Check if AppArmor is enabled
+      command: aa-status
+      register: apparmor_status
+      failed_when: false
+      changed_when: false
+      when: ansible_os_family == "Debian"
+
+    - name: Create AppArmor profile for MATLAB (Ubuntu)
+      template:
+        src: matlab-apparmor.j2
+        dest: /etc/apparmor.d/matlab
+        mode: "{{ matlab_file_mode }}"
+        owner: root
+        group: root
+      when:
+        - ansible_os_family == "Debian"
+        - "'profiles are loaded' in apparmor_status.stdout | default('')"
+      notify: reload apparmor
+
+  tags: [security, selinux, apparmor]
+
+- name: Validate prerequisites installation
+  block:
+    - name: Check critical packages are installed (Ubuntu)
+      package_facts:
+        manager: apt
+      when: ansible_os_family == "Debian"
+
+    - name: Check critical packages are installed (RHEL)
+      package_facts:
+        manager: rpm
+      when: ansible_os_family == "RedHat"
+
+    - name: Verify required packages
+      fail:
+        msg: "Required package {{ item }} not found"
+      when: item not in ansible_facts.packages
+      loop:
+        - unzip
+        - tar
+        - wget
+
+    - name: Test X11 display functionality
+      shell: |
+        export DISPLAY=:99
+        xvfb-run -a echo "X11 test successful"
+      register: x11_test
+      failed_when: x11_test.rc != 0
+
+  tags: [validation, testing]
+
+- name: Create audit log entry for prerequisites completion
+  shell: |
+    logger -t ansible-matlab-prereq "Prerequisites installation completed successfully on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+- name: Display prerequisites summary
+  debug:
+    msg: |
+      Prerequisites Installation Summary:
+      - Base development tools: Installed
+      - MATLAB dependencies: Installed
+      - X11 forwarding: Configured
+      - System limits: Configured
+      - Security contexts: Configured
+      - Users/Groups: Created
+      - Status: SUCCESS
+  tags: [summary]

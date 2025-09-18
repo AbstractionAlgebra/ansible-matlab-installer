@@ -1,0 +1,255 @@
+---
+#################################################################################################################
+# MATLAB Installer Role - Main Task Orchestration
+#
+# Purpose: Main task file orchestrating MATLAB installation on Linux workstations
+# Environment: Secure airgapped environments with STIG compliance
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Security Notes:
+# - All tasks follow STIG compliance requirements
+# - Proper privilege escalation and file permissions
+# - Audit logging for all critical operations
+# - Checksum validation for file integrity
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+- name: Display installation banner
+  debug:
+    msg: |
+      ================================================================================
+      MATLAB {{ matlab_version }} Installation Starting
+      Target: {{ ansible_distribution }} {{ ansible_distribution_version }} ({{ ansible_architecture }})
+      Host: {{ inventory_hostname }}
+      Install Path: {{ matlab_install_root }}
+      License: {{ matlab_license_type }} ({{ matlab_license_server }}:{{ matlab_license_port }})
+      ================================================================================
+  tags: [always]
+
+- name: Create audit log entry for installation start
+  shell: |
+    logger -t ansible-matlab-installer "Starting MATLAB {{ matlab_version }} installation on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+- name: Validate system requirements
+  block:
+    - name: Check system architecture
+      fail:
+        msg: "Unsupported architecture: {{ ansible_architecture }}. Only x86_64 is supported."
+      when: ansible_architecture != "x86_64"
+
+    - name: Validate supported operating system families
+      fail:
+        msg: "Unsupported OS family: {{ ansible_os_family }}. Supported: RedHat, Debian"
+      when: ansible_os_family not in ['RedHat', 'Debian']
+
+    - name: Validate supported distributions
+      fail:
+        msg: "Unsupported OS: {{ ansible_distribution }}. Supported: Ubuntu, RedHat Enterprise Linux"
+      when: ansible_distribution not in ['Ubuntu', 'RedHat Enterprise Linux']
+
+    - name: Validate Ubuntu version
+      fail:
+        msg: "Only Ubuntu 22.04 is supported. Current version: {{ ansible_distribution_version }}"
+      when:
+        - ansible_distribution == "Ubuntu"
+        - ansible_distribution_version != "22.04"
+
+    - name: Validate RHEL family version
+      fail:
+        msg: "Only RHEL 8.x family is supported. Current version: {{ ansible_distribution_major_version }}"
+      when:
+        - ansible_os_family == "RedHat"
+        - ansible_distribution_major_version != "8"
+
+    - name: Check available disk space
+      shell: df {{ matlab_install_root | dirname }} | awk 'NR==2 {print $4}'
+      register: available_space
+      changed_when: false
+
+    - name: Fail if insufficient disk space
+      fail:
+        msg: "Insufficient disk space. Need at least 25GB, available: {{ (available_space.stdout | int / 1024 / 1024) | round(1) }}GB"
+      when: (available_space.stdout | int) < 26214400  # 25GB in KB
+
+    - name: Check memory requirements
+      fail:
+        msg: "Insufficient memory. MATLAB requires at least 4GB RAM, available: {{ ansible_memtotal_mb }}MB"
+      when: ansible_memtotal_mb < 4096
+
+  tags: [validation, prerequisites]
+
+- name: Create temporary installation directory
+  file:
+    path: "{{ matlab_temp_dir }}"
+    state: directory
+    mode: "{{ matlab_secure_dir_mode }}"
+    owner: root
+    group: root
+  tags: [setup, security]
+
+- name: Install system prerequisites
+  include_tasks: prerequisites.yml
+  tags: [prerequisites, packages]
+
+- name: Execute OS-specific tasks
+  include_tasks: os-specific.yml
+  tags: [os-specific]
+
+- name: Validate installation source files
+  block:
+    - name: Check MATLAB installer exists
+      stat:
+        path: "{{ matlab_installer_source }}/{{ matlab_installer_filename }}"
+        checksum_algorithm: sha256
+      register: matlab_installer_stat
+
+    - name: Fail if installer not found
+      fail:
+        msg: "MATLAB installer not found: {{ matlab_installer_source }}/{{ matlab_installer_filename }}"
+      when: not matlab_installer_stat.stat.exists
+
+    - name: Validate installer checksum
+      fail:
+        msg: |
+          MATLAB installer checksum validation failed!
+          Expected: {{ matlab_installer_checksums[matlab_version].sha256 }}
+          Actual: {{ matlab_installer_stat.stat.checksum }}
+      when:
+        - matlab_enforce_checksums | bool
+        - matlab_installer_checksums[matlab_version].sha256 != "PLACEHOLDER_CHECKSUM_UPDATE_FOR_ACTUAL_INSTALLER"
+        - matlab_installer_stat.stat.checksum != matlab_installer_checksums[matlab_version].sha256
+
+    - name: Check documentation source exists
+      stat:
+        path: "{{ matlab_docs_source }}/{{ matlab_docs_filename }}"
+        checksum_algorithm: sha256
+      register: matlab_docs_stat
+      when: matlab_install_documentation | bool
+
+  tags: [validation, security, checksums]
+
+- name: Create installation directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "{{ matlab_dir_mode }}"
+    owner: root
+    group: root
+  loop:
+    - "{{ matlab_install_root }}"
+    - "{{ matlab_install_root }}/licenses"
+    - "/var/log/matlab"
+  tags: [setup, directories]
+
+- name: Perform MATLAB installation
+  include_tasks: matlab-install.yml
+  tags: [installation, matlab]
+
+- name: Install MATLAB documentation
+  include_tasks: documentation.yml
+  when: matlab_install_documentation | bool
+  tags: [documentation, help]
+
+- name: Configure system integration
+  block:
+    - name: Create MATLAB symlinks
+      file:
+        src: "{{ matlab_install_root }}/bin/matlab"
+        dest: "{{ matlab_symlink_path }}/matlab"
+        state: link
+        force: true
+      when: matlab_update_path | bool
+
+    - name: Create MATLAB desktop entries
+      template:
+        src: matlab.desktop.j2
+        dest: "/usr/share/applications/matlab.desktop"
+        mode: "{{ matlab_file_mode }}"
+        owner: root
+        group: root
+      when: matlab_create_desktop_shortcuts | bool
+
+  tags: [integration, desktop]
+
+- name: Perform installation verification
+  block:
+    - name: Check MATLAB binary exists and is executable
+      stat:
+        path: "{{ matlab_install_root }}/bin/matlab"
+      register: matlab_binary_check
+
+    - name: Fail if MATLAB binary not found
+      fail:
+        msg: "MATLAB binary not found or not executable: {{ matlab_install_root }}/bin/matlab"
+      when: not matlab_binary_check.stat.exists or not matlab_binary_check.stat.executable
+
+    - name: Test MATLAB basic functionality
+      shell: |
+        cd {{ matlab_temp_dir }}
+        timeout {{ matlab_test_timeout }} {{ matlab_install_root }}/bin/matlab -batch "disp('MATLAB installation test successful'); exit"
+      register: matlab_test_result
+      failed_when: matlab_test_result.rc != 0
+      when: matlab_run_basic_test | bool
+
+  tags: [verification, testing]
+
+- name: Set secure file permissions
+  block:
+    - name: Set directory permissions
+      file:
+        path: "{{ matlab_install_root }}"
+        mode: "{{ matlab_dir_mode }}"
+        owner: root
+        group: root
+        recurse: true
+        state: directory
+
+    - name: Set executable permissions for binaries
+      shell: |
+        find {{ matlab_install_root }}/bin -type f -name "*" -exec chmod {{ matlab_exec_mode }} {} \;
+      args:
+        warn: false
+
+    - name: Secure sensitive directories
+      file:
+        path: "{{ item }}"
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+      loop:
+        - "{{ matlab_install_root }}/licenses"
+        - "/var/log/matlab"
+
+  tags: [security, permissions]
+
+- name: Create audit log entry for installation completion
+  shell: |
+    logger -t ansible-matlab-installer "MATLAB {{ matlab_version }} installation completed successfully on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+- name: Cleanup temporary files
+  file:
+    path: "{{ matlab_temp_dir }}"
+    state: absent
+  when: matlab_cleanup_temp | bool
+  notify: clean temporary files
+  tags: [cleanup]
+
+- name: Display installation completion message
+  debug:
+    msg: |
+      ================================================================================
+      MATLAB {{ matlab_version }} Installation Completed Successfully
+      Host: {{ inventory_hostname }}
+      Installation Path: {{ matlab_install_root }}
+      Binary: {{ matlab_install_root }}/bin/matlab
+      Documentation: {{ matlab_docs_path if matlab_install_documentation else 'Not installed' }}
+      License: {{ matlab_license_type }} ({{ matlab_license_server }}:{{ matlab_license_port }})
+      ================================================================================
+  tags: [always]

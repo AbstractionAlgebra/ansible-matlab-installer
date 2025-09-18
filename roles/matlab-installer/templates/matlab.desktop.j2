@@ -1,0 +1,19 @@
+[Desktop Entry]
+Name=MATLAB {{ matlab_version }}
+Comment=Technical computing platform
+GenericName=MATLAB
+Exec={{ matlab_install_root }}/bin/matlab -desktop
+Icon={{ matlab_install_root }}/bin/glnxa64/matlab_icon.png
+Terminal=false
+Type=Application
+Categories={{ matlab_desktop_categories | join(';') }};
+MimeType={{ matlab_mime_types | join(';') }};
+StartupNotify=true
+StartupWMClass=MATLAB
+Keywords=matlab;mathematics;engineering;science;computing;
+Actions=Terminal;
+
+[Desktop Action Terminal]
+Name=MATLAB Terminal
+Exec={{ matlab_install_root }}/bin/matlab -nodesktop -nosplash
+Icon={{ matlab_install_root }}/bin/glnxa64/matlab_icon.png

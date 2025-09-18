@@ -1,0 +1,126 @@
+---
+#################################################################################################################
+# MATLAB Installation Playbook for Linux Workstations
+#
+# Purpose: Install MATLAB on Ubuntu 22.04 and RHEL8 workstations in secure airgapped environment
+# Environment: Secure airgapped enviroment, FIPS mode, SELinux on RHEL, no internet access, x86_64 only
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#
+# Security Notes:
+# - Designed for secure airgapped environments assuming the OS is already compliant
+# - Uses secure file transfer with integrity validation
+# - Implements proper privilege escalation and logging
+#
+# Prerequisites:
+# - MATLAB installer files staged locally
+# - Valid MATLAB license server configuration
+# - Local documentation files available
+# - Ansible vault configured for sensitive variables
+#
+# Usage Examples:
+#
+# 1. Basic installation with default settings:
+#    ansible-playbook -i inventory/hosts.yml install-matlab-linux.yml
+#
+# 2. Install with custom MATLAB version:
+#    ansible-playbook -i inventory/hosts.yml install-matlab-linux.yml -e matlab_version=R2024b
+#
+# 3. Install without documentation to save space:
+#    ansible-playbook -i inventory/hosts.yml install-matlab-linux.yml -e matlab_install_documentation=false
+#
+# 4. Install with standard profile (essential toolboxes only):
+#    ansible-playbook -i inventory/hosts.yml install-matlab-linux.yml -e matlab_installation_profile=standard
+#
+# Configuration:
+#
+# 1. License Configuration (edit defaults/main.yml or group_vars):
+#    matlab_license_server: "license.example.local"
+#    matlab_license_port: "27000"
+#    matlab_file_installation_key: "YOUR_INSTALLATION_KEY"
+#
+# 2. Installation Profiles:
+#    matlab_installation_profile: "standard" or "full" (default: full)
+#    - Standard: 17 essential toolboxes for most engineering work
+#    - Full: All 100+ available toolboxes
+#
+# 3. System Requirements:
+#    - x86_64 workstations
+#    - Ubuntu 22.04 LTS or RHEL8
+#    - Minimum 25GB disk space, 4GB RAM
+#    - MATLAB installer files staged in /opt/software/matlab/
+#
+# 4. Quick Setup:
+#    # Update license configuration in defaults/main.yml
+#    # Update inventory/hosts.yml with your target hosts
+#    # Run: ansible-playbook -i inventory/hosts.yml install-matlab-linux.yml
+#
+#################################################################################################################
+
+- name: Install MATLAB on Linux Workstations
+  hosts: matlab_workstations
+  gather_facts: true
+  become: true
+
+  vars:
+    # Installation paths
+    matlab_install_root: "/usr/local/MATLAB"
+    matlab_temp_dir: "/tmp/matlab_install"
+    matlab_docs_path: "/usr/local/MATLAB/help"
+
+    # License configuration
+    matlab_license_server: "{{ matlab_license_server }}"
+    matlab_license_port: "{{ matlab_license_port }}"
+
+  pre_tasks:
+    - name: Create audit log entry for MATLAB installation start
+      shell: |
+        logger -t ansible-matlab "MATLAB installation started on {{ inventory_hostname }} by {{ ansible_user_id }}"
+      when: matlab_audit_logging | bool
+      tags: [audit]
+
+  roles:
+    - role: matlab-installer
+      tags: [matlab, installation]
+
+  post_tasks:
+    - name: Verify MATLAB installation
+      stat:
+        path: "{{ matlab_install_root }}/bin/matlab"
+      register: matlab_binary
+      tags: [verification]
+
+    - name: Fail if MATLAB installation not found
+      fail:
+        msg: "MATLAB installation verification failed - binary not found at {{ matlab_install_root }}/bin/matlab"
+      when: not matlab_binary.stat.exists
+      tags: [verification]
+
+    - name: Create audit log entry for MATLAB installation completion
+      shell: |
+        logger -t ansible-matlab "MATLAB installation completed successfully on {{ inventory_hostname }}"
+      when:
+        - matlab_audit_logging | bool
+        - matlab_binary.stat.exists
+      tags: [audit]
+
+    - name: Display installation summary
+      debug:
+        msg: |
+          MATLAB Installation Summary:
+          - Host: {{ inventory_hostname }}
+          - OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          - Architecture: {{ ansible_architecture }}
+          - Installation Path: {{ matlab_install_root }}
+          - License Server: {{ matlab_license_server }}:{{ matlab_license_port }}
+          - Installation Status: SUCCESS
+      tags: [summary]
+
+  handlers:
+    - name: Clean temporary files
+      file:
+        path: "{{ matlab_temp_dir }}"
+        state: absent
+      tags: [cleanup]

@@ -1,0 +1,245 @@
+---
+#################################################################################################################
+# MATLAB Workstations Group Variables
+#
+# Purpose: Variables specific to MATLAB workstation deployments
+# Environment: Secure airgapped environments with STIG compliance
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Security Notes:
+# - MATLAB-specific security configurations
+# - Performance optimization settings
+# - License and installation parameters
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+# MATLAB Installation Configuration
+matlab_version: "R2025a"
+matlab_install_root: "/usr/local/MATLAB"
+matlab_temp_dir: "/tmp/matlab_install"
+matlab_docs_path: "/usr/local/MATLAB/help"
+
+# MATLAB License Configuration (use vault for sensitive values)
+matlab_license_type: "network"
+matlab_license_server: "{{ matlab_license_server }}"
+matlab_license_port: "{{ matlab_license_port }}"
+
+# Installation Source Paths (adjust for your environment)
+matlab_installer_source: "/opt/software/matlab"
+matlab_installer_filename: "matlab_{{ matlab_version }}_glnxa64.zip"
+matlab_docs_source: "/opt/software/matlab/documentation"
+matlab_docs_filename: "matlab_{{ matlab_version }}_help.tar.gz"
+
+# Products to Install
+matlab_install_products:
+  - "MATLAB"
+  - "Simulink"
+  - "5G_Toolbox"
+  - "AUTOSAR_Blockset"
+  - "Aerospace_Blockset"
+  - "Aerospace_Toolbox"
+  - "Antenna_Toolbox"
+  - "Audio_Toolbox"
+  - "Automated_Driving_Toolbox"
+  - "Bioinformatics_Toolbox"
+  - "Communications_Toolbox"
+  - "Computer_Vision_Toolbox"
+  - "Control_System_Toolbox"
+  - "Curve_Fitting_Toolbox"
+  - "DSP_System_Toolbox"
+  - "Data_Acquisition_Toolbox"
+  - "Database_Toolbox"
+  - "Datafeed_Toolbox"
+  - "Deep_Learning_HDL_Toolbox"
+  - "Deep_Learning_Toolbox"
+  - "Econometrics_Toolbox"
+  - "Embedded_Coder"
+  - "Filter_Design_HDL_Coder"
+  - "Financial_Instruments_Toolbox"
+  - "Financial_Toolbox"
+  - "Fixed_Point_Designer"
+  - "Fuzzy_Logic_Toolbox"
+  - "GPU_Coder"
+  - "Global_Optimization_Toolbox"
+  - "HDL_Coder"
+  - "HDL_Verifier"
+  - "Image_Acquisition_Toolbox"
+  - "Image_Processing_Toolbox"
+  - "Industrial_Communication_Toolbox"
+  - "Instrument_Control_Toolbox"
+  - "LTE_Toolbox"
+  - "Lidar_Toolbox"
+  - "MATLAB_Coder"
+  - "MATLAB_Compiler"
+  - "MATLAB_Compiler_SDK"
+  - "MATLAB_Parallel_Server"
+  - "MATLAB_Production_Server"
+  - "MATLAB_Report_Generator"
+  - "MATLAB_Web_App_Server"
+  - "Mapping_Toolbox"
+  - "Mixed_Signal_Blockset"
+  - "Model_Predictive_Control_Toolbox"
+  - "Motor_Control_Blockset"
+  - "Navigation_Toolbox"
+  - "Optimization_Toolbox"
+  - "Parallel_Computing_Toolbox"
+  - "Partial_Differential_Equation_Toolbox"
+  - "Phased_Array_System_Toolbox"
+  - "Powertrain_Blockset"
+  - "Predictive_Maintenance_Toolbox"
+  - "RF_Blockset"
+  - "RF_PCB_Toolbox"
+  - "RF_Toolbox"
+  - "ROS_Toolbox"
+  - "Radar_Toolbox"
+  - "Reinforcement_Learning_Toolbox"
+  - "Requirements_Toolbox"
+  - "Risk_Management_Toolbox"
+  - "Robotics_System_Toolbox"
+  - "Robust_Control_Toolbox"
+  - "Satellite_Communications_Toolbox"
+  - "Sensor_Fusion_and_Tracking_Toolbox"
+  - "SerDes_Toolbox"
+  - "Signal_Processing_Toolbox"
+  - "SimBiology"
+  - "SimEvents"
+  - "Simscape"
+  - "Simscape_Driveline"
+  - "Simscape_Electrical"
+  - "Simscape_Fluids"
+  - "Simscape_Multibody"
+  - "Simulink_3D_Animation"
+  - "Simulink_Check"
+  - "Simulink_Coder"
+  - "Simulink_Control_Design"
+  - "Simulink_Coverage"
+  - "Simulink_Design_Optimization"
+  - "Simulink_Design_Verifier"
+  - "Simulink_Desktop_Real_Time"
+  - "Simulink_PLC_Coder"
+  - "Simulink_Real_Time"
+  - "Simulink_Report_Generator"
+  - "Simulink_Requirements"
+  - "Simulink_Test"
+  - "SoC_Blockset"
+  - "Spreadsheet_Link"
+  - "Stateflow"
+  - "Statistics_and_Machine_Learning_Toolbox"
+  - "Symbolic_Math_Toolbox"
+  - "System_Identification_Toolbox"
+  - "Text_Analytics_Toolbox"
+  - "UAV_Toolbox"
+  - "Vehicle_Dynamics_Blockset"
+  - "Vehicle_Network_Toolbox"
+  - "Vision_HDL_Toolbox"
+  - "WLAN_Toolbox"
+  - "Wavelet_Toolbox"
+
+# Installation Options
+matlab_silent_install: true
+matlab_accept_license: true
+matlab_create_desktop_shortcuts: true
+matlab_install_documentation: true
+matlab_update_path: true
+matlab_create_user_configs: true
+
+# Security and Compliance
+matlab_audit_logging: true
+matlab_enforce_checksums: true
+matlab_stig_compliance: true
+matlab_secure_permissions: true
+
+# System Integration
+matlab_symlink_path: "/usr/local/bin"
+matlab_create_module_file: false
+matlab_module_path: "/usr/share/modules/modulefiles"
+
+# Performance Settings
+matlab_performance_tuning: true
+matlab_parallel_workers: "auto"
+matlab_java_heap_size: "1024m"
+matlab_max_array_size: "2147483647"
+
+# Cleanup Configuration
+matlab_cleanup_temp: true
+matlab_cleanup_installer: false
+matlab_keep_logs: true
+matlab_log_retention_days: 30
+
+# Validation and Testing
+matlab_verify_installation: true
+matlab_run_basic_test: true
+matlab_test_timeout: 300
+
+# File and Directory Permissions (STIG compliant)
+matlab_dir_mode: "0755"
+matlab_file_mode: "0644"
+matlab_exec_mode: "0755"
+matlab_secure_dir_mode: "0750"
+
+# Network Configuration
+matlab_network_ports:
+  license: "{{ matlab_license_port }}"
+  parallel_start: 27350
+  parallel_end: 27358
+
+# User Configuration
+matlab_default_users: []
+matlab_user_config_template: "matlab_startup.m.j2"
+
+# Logging Configuration
+matlab_log_files:
+  installation: "/var/log/matlab/installation"
+  runtime: "/var/log/matlab/runtime"
+  license: "/var/log/matlab/license"
+  error: "/var/log/matlab/error"
+
+# Backup Configuration
+matlab_backup_enabled: true
+matlab_backup_items:
+  - "{{ matlab_install_root }}/licenses"
+  - "{{ matlab_install_root }}/toolbox/local"
+  - "/var/log/matlab"
+
+# Environment Variables
+matlab_env_vars:
+  MATLAB_ROOT: "{{ matlab_install_root }}"
+  MATLAB_PREFDIR: "{{ matlab_install_root }}/toolbox/local"
+  MATLAB_LOG_DIR: "/var/log/matlab"
+  LD_LIBRARY_PATH: "{{ matlab_install_root }}/bin/glnxa64:{{ matlab_install_root }}/sys/os/glnxa64"
+
+# Error Handling
+matlab_max_retries: 3
+matlab_retry_delay: 10
+matlab_fail_on_error: true
+
+# Desktop Integration
+matlab_desktop_categories:
+  - "Science"
+  - "Engineering"
+  - "Education"
+  - "Development"
+
+matlab_mime_types:
+  - "application/x-matlab-data"
+  - "application/x-matlab-figure"
+  - "application/x-matlab-workspace"
+  - "text/x-matlab"
+
+# Health Monitoring
+matlab_health_check_enabled: true
+matlab_health_check_interval: "1h"
+matlab_health_check_commands:
+  - "test -x {{ matlab_install_root }}/bin/matlab"
+  - "{{ matlab_install_root }}/bin/matlab -batch 'license(\"test\"); exit'"
+
+# Documentation Configuration
+matlab_docs_web_server: false
+matlab_docs_index_creation: true
+matlab_docs_types:
+  - "html"
+  - "pdf"
+  - "examples"

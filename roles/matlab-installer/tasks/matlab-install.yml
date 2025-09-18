@@ -1,0 +1,386 @@
+---
+#################################################################################################################
+# MATLAB Installer Role - Core MATLAB Installation Tasks
+#
+# Purpose: Core MATLAB installation logic for silent installation in airgapped environment
+# Environment: Secure airgapped environments with STIG compliance
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Security Notes:
+# - Silent installation with predefined configuration
+# - Checksum validation for installer integrity
+# - Secure file permissions throughout installation
+# - Proper cleanup of temporary files and credentials
+# - Audit logging for all installation steps
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+- name: Create audit log entry for MATLAB installation start
+  shell: |
+    logger -t ansible-matlab-install "Starting MATLAB {{ matlab_version }} core installation on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+- name: Prepare installation environment
+  block:
+    - name: Create secure temporary directory for installation
+      file:
+        path: "{{ matlab_temp_dir }}/matlab_install"
+        state: directory
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+
+    - name: Create installation log directory
+      file:
+        path: "/var/log/matlab/installation"
+        state: directory
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+
+    - name: Set installation timestamp
+      set_fact:
+        matlab_install_timestamp: "{{ ansible_date_time.epoch }}"
+
+  tags: [setup, preparation]
+
+- name: Copy and validate MATLAB installer
+  block:
+    - name: Copy MATLAB installer to temporary directory
+      copy:
+        src: "{{ matlab_installer_source }}/{{ matlab_installer_filename }}"
+        dest: "{{ matlab_temp_dir }}/{{ matlab_installer_filename }}"
+        mode: "{{ matlab_file_mode }}"
+        owner: root
+        group: root
+        backup: false
+      register: installer_copy
+
+    - name: Validate installer checksum
+      stat:
+        path: "{{ matlab_temp_dir }}/{{ matlab_installer_filename }}"
+        checksum_algorithm: sha256
+      register: installer_checksum
+
+    - name: Fail if checksum validation fails
+      fail:
+        msg: |
+          MATLAB installer checksum validation failed!
+          Expected: {{ matlab_installer_checksums[matlab_version].sha256 }}
+          Actual: {{ installer_checksum.stat.checksum }}
+          File: {{ matlab_temp_dir }}/{{ matlab_installer_filename }}
+      when:
+        - matlab_enforce_checksums | bool
+        - matlab_installer_checksums[matlab_version].sha256 != "PLACEHOLDER_CHECKSUM_UPDATE_FOR_ACTUAL_INSTALLER"
+        - installer_checksum.stat.checksum != matlab_installer_checksums[matlab_version].sha256
+
+    - name: Extract MATLAB installer
+      unarchive:
+        src: "{{ matlab_temp_dir }}/{{ matlab_installer_filename }}"
+        dest: "{{ matlab_temp_dir }}/matlab_install"
+        remote_src: true
+        owner: root
+        group: root
+        mode: preserve
+      register: installer_extract
+
+  tags: [installer, validation, extraction]
+
+- name: Configure MATLAB installation input file
+  block:
+    - name: Create installation input file from template
+      template:
+        src: matlab-installer-input.txt.j2
+        dest: "{{ matlab_temp_dir }}/installer_input.txt"
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+      no_log: true
+
+    - name: Create license file if provided
+      copy:
+        content: "{{ matlab_license_file }}"
+        dest: "{{ matlab_temp_dir }}/license.lic"
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+      when:
+        - matlab_license_file | length > 0
+        - matlab_license_type == "file"
+      no_log: true
+
+    - name: Validate installation input file
+      stat:
+        path: "{{ matlab_temp_dir }}/installer_input.txt"
+      register: input_file_stat
+
+    - name: Display installation configuration (non-sensitive)
+      debug:
+        msg: |
+          MATLAB Installation Configuration:
+          - Version: {{ matlab_version }}
+          - Install Root: {{ matlab_install_root }}
+          - License Type: {{ matlab_license_type }}
+          - Silent Install: {{ matlab_silent_install }}
+          - Products: {{ matlab_install_products | length }} selected
+          - Input File: {{ input_file_stat.stat.exists }}
+
+  tags: [configuration, license]
+
+- name: Execute MATLAB installation
+  block:
+    - name: Set X11 display for headless installation
+      set_fact:
+        matlab_display_env:
+          DISPLAY: ":99"
+          XAUTHORITY: "/tmp/.X99-auth"
+
+    - name: Find MATLAB installer executable
+      find:
+        paths: "{{ matlab_temp_dir }}/matlab_install"
+        patterns: "install"
+        file_type: file
+        recurse: true
+      register: installer_executable
+
+    - name: Fail if installer executable not found
+      fail:
+        msg: "MATLAB installer executable not found in extracted files"
+      when: installer_executable.files | length == 0
+
+    - name: Make installer executable
+      file:
+        path: "{{ installer_executable.files[0].path }}"
+        mode: "{{ matlab_exec_mode }}"
+        owner: root
+        group: root
+
+    - name: Execute MATLAB silent installation
+      command: >
+        {{ installer_executable.files[0].path }}
+        -inputFile {{ matlab_temp_dir }}/installer_input.txt
+        -logFile /var/log/matlab/installation/matlab_install_{{ matlab_install_timestamp }}.log
+        -tmpdir {{ matlab_temp_dir }}/matlab_install
+      environment: "{{ matlab_display_env }}"
+      register: matlab_installation
+      async: 3600
+      poll: 30
+      retries: 1
+
+    - name: Wait for installation to complete
+      async_status:
+        jid: "{{ matlab_installation.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 120
+      delay: 30
+
+  tags: [installation, silent-install]
+
+- name: Verify installation success
+  block:
+    - name: Check installation log for errors
+      shell: |
+        if [ -f "/var/log/matlab/installation/matlab_install_{{ matlab_install_timestamp }}.log" ]; then
+          grep -i "error\|failed\|exception" "/var/log/matlab/installation/matlab_install_{{ matlab_install_timestamp }}.log" || echo "No errors found"
+        else
+          echo "Installation log not found"
+        fi
+      register: install_log_check
+      changed_when: false
+
+    - name: Check MATLAB installation directory
+      stat:
+        path: "{{ matlab_install_root }}"
+      register: install_dir_check
+
+    - name: Check MATLAB binary
+      stat:
+        path: "{{ matlab_install_root }}/bin/matlab"
+      register: matlab_binary_check
+
+    - name: Check MATLAB version file
+      stat:
+        path: "{{ matlab_install_root }}/VersionInfo.xml"
+      register: version_info_check
+
+    - name: Fail if installation verification fails
+      fail:
+        msg: |
+          MATLAB installation verification failed:
+          - Installation directory exists: {{ install_dir_check.stat.exists }}
+          - MATLAB binary exists: {{ matlab_binary_check.stat.exists }}
+          - Version info exists: {{ version_info_check.stat.exists }}
+          - Installation log errors: {{ 'Yes' if 'error' in install_log_check.stdout.lower() else 'No' }}
+      when: >
+        not install_dir_check.stat.exists or
+        not matlab_binary_check.stat.exists or
+        not version_info_check.stat.exists or
+        'error' in install_log_check.stdout.lower()
+
+  tags: [verification, validation]
+
+- name: Configure MATLAB post-installation
+  block:
+    - name: Set proper ownership of MATLAB installation
+      file:
+        path: "{{ matlab_install_root }}"
+        owner: root
+        group: root
+        recurse: true
+
+    - name: Set executable permissions for MATLAB binaries
+      shell: |
+        find {{ matlab_install_root }}/bin -type f -name "*" -exec chmod +x {} \;
+        find {{ matlab_install_root }}/sys/os/glnxa64 -type f -name "*.so*" -exec chmod +x {} \; 2>/dev/null || true
+      args:
+        warn: false
+
+    - name: Create MATLAB startup script
+      template:
+        src: matlab-startup.sh.j2
+        dest: "{{ matlab_install_root }}/bin/matlab-startup"
+        mode: "{{ matlab_exec_mode }}"
+        owner: root
+        group: root
+
+    - name: Configure MATLAB preferences directory
+      file:
+        path: "{{ matlab_install_root }}/toolbox/local"
+        state: directory
+        mode: "{{ matlab_dir_mode }}"
+        owner: root
+        group: root
+
+    - name: Create MATLAB pathdef.m file
+      template:
+        src: pathdef.m.j2
+        dest: "{{ matlab_install_root }}/toolbox/local/pathdef.m"
+        mode: "{{ matlab_file_mode }}"
+        owner: root
+        group: root
+
+  tags: [post-install, configuration]
+
+- name: Configure MATLAB licensing
+  block:
+    - name: Create license directory
+      file:
+        path: "{{ matlab_install_root }}/licenses"
+        state: directory
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+
+    - name: Configure network license (if applicable)
+      template:
+        src: network.lic.j2
+        dest: "{{ matlab_install_root }}/licenses/network.lic"
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+      when: matlab_license_type == "network"
+      no_log: true
+
+    - name: Copy license file (if provided)
+      copy:
+        src: "{{ matlab_temp_dir }}/license.lic"
+        dest: "{{ matlab_install_root }}/licenses/license.lic"
+        mode: "{{ matlab_secure_dir_mode }}"
+        owner: root
+        group: root
+        remote_src: true
+      when:
+        - matlab_license_type == "file"
+        - matlab_license_file | length > 0
+      no_log: true
+
+    - name: Test license connectivity (network license)
+      shell: |
+        {{ matlab_install_root }}/bin/matlab -batch "license('test'); exit" 2>&1 | grep -i "license"
+      register: license_test
+      failed_when: false
+      when: matlab_license_type == "network"
+      environment: "{{ matlab_display_env }}"
+
+  tags: [licensing, network-license]
+
+- name: Perform basic installation test
+  block:
+    - name: Test MATLAB startup
+      shell: |
+        timeout 60 {{ matlab_install_root }}/bin/matlab -batch "disp('MATLAB installation test'); ver; exit"
+      register: matlab_startup_test
+      environment: "{{ matlab_display_env }}"
+      when: matlab_run_basic_test | bool
+
+    - name: Validate test results
+      debug:
+        msg: |
+          MATLAB Installation Test Results:
+          - Startup successful: {{ matlab_startup_test.rc == 0 if matlab_run_basic_test else 'Skipped' }}
+          - License test: {{ 'Success' if license_test.rc == 0 else 'Failed' if matlab_license_type == 'network' else 'N/A' }}
+
+  tags: [testing, validation]
+
+- name: Secure installation files and cleanup
+  block:
+    - name: Remove installer input file (contains sensitive data)
+      file:
+        path: "{{ matlab_temp_dir }}/installer_input.txt"
+        state: absent
+      no_log: true
+
+    - name: Remove temporary license file
+      file:
+        path: "{{ matlab_temp_dir }}/license.lic"
+        state: absent
+      when: matlab_license_type == "file"
+      no_log: true
+
+    - name: Set final secure permissions on installation
+      file:
+        path: "{{ matlab_install_root }}"
+        mode: "{{ matlab_dir_mode }}"
+        owner: root
+        group: root
+        state: directory
+
+    - name: Create installation completion marker
+      copy:
+        content: |
+          MATLAB {{ matlab_version }} installation completed
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          Host: {{ inventory_hostname }}
+          User: {{ ansible_user_id }}
+          Installation path: {{ matlab_install_root }}
+        dest: "{{ matlab_install_root }}/.ansible_install_complete"
+        mode: "{{ matlab_file_mode }}"
+        owner: root
+        group: root
+
+  tags: [security, cleanup]
+
+- name: Create audit log entry for installation completion
+  shell: |
+    logger -t ansible-matlab-install "MATLAB {{ matlab_version }} core installation completed successfully on {{ inventory_hostname }}"
+  when: matlab_audit_logging | bool
+  tags: [audit, security]
+
+- name: Display installation summary
+  debug:
+    msg: |
+      ================================================================================
+      MATLAB Installation Summary:
+      - Version: {{ matlab_version }}
+      - Installation Path: {{ matlab_install_root }}
+      - Binary: {{ matlab_install_root }}/bin/matlab
+      - License Type: {{ matlab_license_type }}
+      - Installation Status: SUCCESS
+      - Installation Time: {{ ansible_date_time.iso8601 }}
+      ================================================================================
+  tags: [summary]

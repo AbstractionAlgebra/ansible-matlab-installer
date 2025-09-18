@@ -1,0 +1,52 @@
+---
+#################################################################################################################
+# MATLAB Installer Role - Handlers
+#
+# Purpose: Essential handlers for MATLAB installation role
+# Environment: Secure airgapped environments with STIG compliance
+# Target: Ubuntu 22.04 and RHEL8 workstations (x86_64)
+#
+# Author: Michael Angel
+# Date: 2025-09-17
+# Version: 1.1
+#################################################################################################################
+
+- name: clean temporary files
+  file:
+    path: "{{ matlab_temp_dir }}"
+    state: absent
+  tags: [cleanup]
+
+- name: reload systemd
+  systemd:
+    daemon_reload: true
+  tags: [systemd]
+
+- name: restart rsyslog
+  systemd:
+    name: rsyslog
+    state: restarted
+  tags: [logging]
+
+- name: reload firewalld
+  systemd:
+    name: firewalld
+    state: reloaded
+  when: ansible_os_family == "RedHat"
+  tags: [firewall]
+
+- name: reload apparmor
+  command: apparmor_parser -r /etc/apparmor.d/usr.local.MATLAB.bin.matlab
+  when: ansible_os_family == "Debian"
+  failed_when: false
+  tags: [security]
+
+- name: restore selinux contexts
+  command: restorecon -R {{ matlab_install_root }}
+  when: ansible_os_family == "RedHat"
+  failed_when: false
+  tags: [security]
+
+- name: update ldconfig
+  command: ldconfig
+  tags: [system]
