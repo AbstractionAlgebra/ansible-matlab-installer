@@ -73,13 +73,16 @@
 
     - name: Fail if insufficient disk space
       fail:
-        msg: "Insufficient disk space. Need at least 25GB, available: {{ (available_space.stdout | int / 1024 / 1024) | round(1) }}GB"
-      when: (available_space.stdout | int) < 26214400  # 25GB in KB
+        msg: "Insufficient disk space. Need at least 50GB, available: {{ (available_space.stdout | int / 1024 / 1024) | round(1) }}GB"
+      when:
+        - available_space is defined
+        - available_space.stdout is defined
+        - (available_space.stdout | int) < 52428800  # 50GB in KB
 
     - name: Check memory requirements
       fail:
-        msg: "Insufficient memory. MATLAB requires at least 4GB RAM, available: {{ ansible_memtotal_mb }}MB"
-      when: ansible_memtotal_mb < 4096
+        msg: "Insufficient memory. MATLAB requires at least 8GB RAM, available: {{ ansible_memtotal_mb }}MB"
+      when: ansible_memtotal_mb < 8192
 
   tags: [validation, prerequisites]
 
@@ -214,6 +217,7 @@
         find {{ matlab_install_root }}/bin -type f -name "*" -exec chmod {{ matlab_exec_mode }} {} \;
       args:
         warn: false
+      changed_when: true
 
     - name: Secure sensitive directories
       file:

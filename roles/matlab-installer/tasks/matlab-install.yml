@@ -133,11 +133,6 @@
 
 - name: Execute MATLAB installation
   block:
-    - name: Set X11 display for headless installation
-      set_fact:
-        matlab_display_env:
-          DISPLAY: ":99"
-          XAUTHORITY: "/tmp/.X99-auth"
 
     - name: Find MATLAB installer executable
       find:
@@ -165,11 +160,11 @@
         -inputFile {{ matlab_temp_dir }}/installer_input.txt
         -logFile /var/log/matlab/installation/matlab_install_{{ matlab_install_timestamp }}.log
         -tmpdir {{ matlab_temp_dir }}/matlab_install
-      environment: "{{ matlab_display_env }}"
       register: matlab_installation
       async: 3600
       poll: 30
       retries: 1
+      changed_when: true
 
     - name: Wait for installation to complete
       async_status:
@@ -239,6 +234,7 @@
         find {{ matlab_install_root }}/sys/os/glnxa64 -type f -name "*.so*" -exec chmod +x {} \; 2>/dev/null || true
       args:
         warn: false
+      changed_when: true
 
     - name: Create MATLAB startup script
       template:
@@ -305,7 +301,6 @@
       register: license_test
       failed_when: false
       when: matlab_license_type == "network"
-      environment: "{{ matlab_display_env }}"
 
   tags: [licensing, network-license]
 
@@ -315,7 +310,6 @@
       shell: |
         timeout 60 {{ matlab_install_root }}/bin/matlab -batch "disp('MATLAB installation test'); ver; exit"
       register: matlab_startup_test
-      environment: "{{ matlab_display_env }}"
       when: matlab_run_basic_test | bool
 
     - name: Validate test results

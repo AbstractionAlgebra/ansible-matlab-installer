@@ -18,7 +18,7 @@
 # - MATLAB installer files staged locally
 # - Valid MATLAB license server configuration
 # - Local documentation files available
-# - Ansible vault configured for sensitive variables
+# - Designed for Ansible to execute on Ubuntu 22.04 with Ansible 2.10 against Ubuntu 22.04 and RHEL8 hosts
 #
 # Usage Examples:
 #
@@ -37,7 +37,7 @@
 # Configuration:
 #
 # 1. License Configuration (edit defaults/main.yml or group_vars):
-#    matlab_license_server: "license.example.local"
+#    matlab_license_server: "license.company.lan"
 #    matlab_license_port: "27000"
 #    matlab_file_installation_key: "YOUR_INSTALLATION_KEY"
 #
@@ -47,9 +47,8 @@
 #    - Full: All 100+ available toolboxes
 #
 # 3. System Requirements:
-#    - x86_64 workstations
-#    - Ubuntu 22.04 LTS or RHEL8
-#    - Minimum 25GB disk space, 4GB RAM
+#    - Ubuntu 22.04 LTS or RHEL8 either x86_64 architecture
+#    - Minimum 50GB disk space, 8GB RAM
 #    - MATLAB installer files staged in /opt/software/matlab/
 #
 # 4. Quick Setup:
@@ -76,7 +75,7 @@
 
     # License Configuration
     matlab_license_type: "network"
-    matlab_license_server: "license.example.local"
+    matlab_license_server: "license.company.lan"
     matlab_license_port: "27000"
     matlab_license_file: ""
     matlab_file_installation_key: "YOUR_INSTALLATION_KEY"

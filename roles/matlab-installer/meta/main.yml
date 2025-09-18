@@ -14,16 +14,16 @@
 galaxy_info:
   role_name: matlab-installer
   namespace: enterprise
-  author: Enterprise Security Team
+  author: Michael Angel
   description: |
     Install MATLAB on Ubuntu 22.04 and RHEL8 workstations in secure,
     airgapped environments with STIG compliance. Designed for
     secure networks without internet access.
 
   company: Enterprise Organization
-  license: Proprietary
+  license: MIT
 
-  min_ansible_version: "2.12"
+  min_ansible_version: "2.10"
 
   platforms:
     - name: Ubuntu
@@ -38,6 +38,7 @@ galaxy_info:
 
 dependencies: []
 
-collections:
-  - community.general
-  - ansible.posix
+# Collections not required for Ansible 2.10.8 - using legacy modules
+# collections:
+#   - community.general
+#   - ansible.posix

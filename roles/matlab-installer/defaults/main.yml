@@ -43,7 +43,7 @@ matlab_docs_filename: "matlab_{{ matlab_version }}_help.tar.gz"
 
 # License Configuration
 matlab_license_type: "network"
-matlab_license_server: "license.example.local"
+matlab_license_server: "license.company.lan"
 matlab_license_port: "27000"
 matlab_license_file: ""
 matlab_file_installation_key: "YOUR_INSTALLATION_KEY"
@@ -291,8 +291,8 @@ matlab_supported_versions:
 
 # Installation Requirements
 matlab_minimum_requirements:
-  disk_space_gb: 30
-  memory_mb: 4096
+  disk_space_gb: 50
+  memory_mb: 8192
 
 # Network Configuration
 matlab_network_ports:

@@ -45,7 +45,7 @@ This Ansible solution provides automated MATLAB installation for x86_64 workstat
 Edit `roles/matlab-installer/defaults/main.yml`:
 
 ```yaml
-matlab_license_server: "license.example.local"
+matlab_license_server: "license.company.lan"
 matlab_license_port: "27000"
 matlab_file_installation_key: "YOUR_INSTALLATION_KEY"
 ```
@@ -77,9 +77,27 @@ matlab_create_desktop_shortcuts: true       # Create desktop shortcuts
 
 - x86_64 workstations
 - Ubuntu 22.04 LTS or RHEL8
-- Minimum 25GB disk space
-- Minimum 4GB RAM
-- Ansible 2.12 or later
+- Minimum 50GB disk space
+- Minimum 8GB RAM
+- Ansible 2.10.8 or later
+
+### Additional Ubuntu 22.04 Packages
+
+The following packages are required and will be automatically installed by the playbook:
+
+**Base development tools:**
+- build-essential
+- wget, curl, unzip, tar, gzip
+
+**MATLAB-specific dependencies:**
+Most dependencies are already available in Ubuntu 22.04, but the playbook will ensure these are installed:
+- libxss1, libxtst6, libxrandr2 (X11 libraries)
+- libasound2-dev (audio support)
+- libpangocairo-1.0-0, libatk1.0-0, libcairo-gobject2 (rendering libraries)
+- libgtk-3-0, libgdk-pixbuf2.0-0 (GTK+ libraries)
+- libx11-xcb1, libxcomposite1, libxcursor1 (X11 extensions)
+- libxdamage1, libxfixes3, libxi6, libxrender1 (additional X11 libraries)
+- ca-certificates, libnss3 (security and certificates)
 
 ## Directory Structure
 
@@ -101,4 +119,3 @@ This project is proprietary and intended for internal use in secure government a
 
 For issues:
 - Check logs in `/var/log/matlab/` and `/var/log/ansible/`
-- Contact your system administrator or IT security team

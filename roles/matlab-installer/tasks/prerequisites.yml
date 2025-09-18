@@ -33,7 +33,8 @@
       when: ansible_os_family == "Debian"
 
     - name: Check package manager is available (RHEL)
-      command: rpm --version
+      package_facts:
+        manager: rpm
       register: rpm_check
       failed_when: false
       changed_when: false
@@ -69,9 +70,6 @@
           - unzip
           - tar
           - gzip
-          - xvfb
-          - xorg
-          - openbox
         state: present
         install_recommends: false
       when: ansible_os_family == "Debian"
@@ -87,9 +85,6 @@
           - unzip
           - tar
           - gzip
-          - xorg-x11-server-Xvfb
-          - xorg-x11-xinit
-          - openbox
         state: present
       when: ansible_os_family == "RedHat"
       retries: "{{ matlab_max_retries }}"
@@ -118,33 +113,6 @@
 
   tags: [packages, matlab-deps]
 
-- name: Configure X11 forwarding and display
-  block:
-    - name: Ensure X11 directory exists
-      file:
-        path: /tmp/.X11-unix
-        state: directory
-        mode: "1777"
-        owner: root
-        group: root
-
-    - name: Create Xvfb service for headless display
-      template:
-        src: xvfb.service.j2
-        dest: /etc/systemd/system/xvfb.service
-        mode: "{{ matlab_file_mode }}"
-        owner: root
-        group: root
-      notify: reload systemd
-
-    - name: Start and enable Xvfb service
-      systemd:
-        name: xvfb
-        state: started
-        enabled: true
-        daemon_reload: true
-
-  tags: [x11, display, services]
 
 - name: Configure system limits for MATLAB
   block:
@@ -155,12 +123,12 @@
         limit_item: "{{ item.item }}"
         value: "{{ item.value }}"
       loop:
-        - { type: "soft", item: "memlock", value: "unlimited" }
-        - { type: "hard", item: "memlock", value: "unlimited" }
-        - { type: "soft", item: "stack", value: "unlimited" }
-        - { type: "hard", item: "stack", value: "unlimited" }
-        - { type: "soft", item: "nofile", value: "65536" }
-        - { type: "hard", item: "nofile", value: "65536" }
+        - {type: "soft", item: "memlock", value: "unlimited"}
+        - {type: "hard", item: "memlock", value: "unlimited"}
+        - {type: "soft", item: "stack", value: "unlimited"}
+        - {type: "hard", item: "stack", value: "unlimited"}
+        - {type: "soft", item: "nofile", value: "65536"}
+        - {type: "hard", item: "nofile", value: "65536"}
 
     - name: Configure shared memory limits
       sysctl:
@@ -169,9 +137,9 @@
         state: present
         reload: true
       loop:
-        - { name: "kernel.shmmni", value: "4096" }
-        - { name: "kernel.shmmax", value: "68719476736" }  # 64GB
-        - { name: "kernel.shmall", value: "4294967296" }
+        - {name: "kernel.shmmni", value: "4096"}
+        - {name: "kernel.shmmax", value: "68719476736"}  # 64GB
+        - {name: "kernel.shmall", value: "4294967296"}
 
   tags: [system-limits, performance]
 
@@ -264,12 +232,6 @@
         - tar
         - wget
 
-    - name: Test X11 display functionality
-      shell: |
-        export DISPLAY=:99
-        xvfb-run -a echo "X11 test successful"
-      register: x11_test
-      failed_when: x11_test.rc != 0
 
   tags: [validation, testing]
 
@@ -285,7 +247,6 @@
       Prerequisites Installation Summary:
       - Base development tools: Installed
       - MATLAB dependencies: Installed
-      - X11 forwarding: Configured
       - System limits: Configured
       - Security contexts: Configured
       - Users/Groups: Created

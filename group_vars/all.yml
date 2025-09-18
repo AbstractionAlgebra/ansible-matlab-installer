@@ -96,8 +96,8 @@ stig_cat3_enabled: false  # Optional findings
 # Emergency Contacts
 emergency_contacts:
   - name: "IT Security Team"
-    email: "security@example.local"
+    email: "security@company.lan"
     phone: "+1-555-0100"
   - name: "System Administrator"
-    email: "sysadmin@example.local"
+    email: "sysadmin@company.lan"
     phone: "+1-555-0101"
